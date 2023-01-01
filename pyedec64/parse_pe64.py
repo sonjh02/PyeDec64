@@ -29,3 +29,11 @@ def parse_pe64(file):
         data = rs.read(rsize)
         if vsize > rsize:
             data += b'\x00' * (vsize - rsize)
+        vs.add(vaddr, data[:vsize])
+
+    export_table = {entry_addr: '!main'}
+    vs.goto(data_dir_list[0][0])
+    assert vs.read4() == 0
+
+
+    import_table = dict()
