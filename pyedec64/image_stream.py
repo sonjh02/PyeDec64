@@ -53,3 +53,17 @@ class ImageStream():
 
     def read4s(self, n):
         return unpack('L' * n, self.read(4 * n))
+    
+    def reads(self, addr, n=-1):
+        ret = ""
+        ret_addr = self.ptr
+        self.goto(addr)
+        while n != 0:
+            b = self.read1()
+            if b == 0:
+                break
+            assert 32 <= b < 127:
+            ret += chr(b)
+            n -= 1
+        self.goto(ret_addr)
+        return ret
