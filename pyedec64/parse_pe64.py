@@ -54,13 +54,43 @@ def parse_pe64(file):
         export_name = vs.reads(vs.read4())
         vs.goto(_export_ord_table + 2 * export_idx)
         export_ord = _ord_base + vs.read2()
-        export_table[export_addr] = '%s.%d.%s' % (
+        export_table[export_addr] = '%s.#%d.%s' % (
             _pe_name,
             export_ord,
             export_name,
         )
 
+    import_table = dict()
+    import_dll_idx = 0
+    while True:
+        vs.goto(data_dir_list[1][0] + 20 * import_dll_idx)
+        _import_name_table = vs.read4()
+        if _import_name_table == 0:
+            break
+        vs.skip(8)
+        import_dll_name = vs.reads(vs.read4())
+        _import_addr_base = vs.read4()
+        import_idx = 0
+        while True:
+            vs.goto(_import_name_table + 8 * import_idx)
+            val, flag = vs.read4s(2)
+            if flag == 0:
+                if val == 0:
+                    break
+                import_table[_import_addr_base + 8 * import_idx] = (
+                    '%s.%s' % (
+                        import_dll_name,
+                        vs.reads(val + 2),
+                    )
+                )
+            else:
+                import_table[_import_addr_base + 8 * import_idx] = (
+                    '%s.#%d' % (
+                        import_dll_name,
+                        val & 0x0000FFFF,
+                    )
+                )
+            import_idx += 1
+        import_dll_idx += 1
 
-
-
-    # import_table = dict()
+        return vs, export_table, import_table
