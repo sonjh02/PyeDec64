@@ -73,18 +73,19 @@ def parse_pe64(file):
         import_idx = 0
         while True:
             vs.goto(_import_name_table + 8 * import_idx)
+            _import_addr = _import_addr_base + 8 * import_idx
             val, flag = vs.read4s(2)
             if flag == 0:
                 if val == 0:
                     break
-                import_table[_import_addr_base + 8 * import_idx] = (
+                import_table[_import_addr] = (
                     '%s.%s' % (
                         import_dll_name,
                         vs.reads(val + 2),
                     )
                 )
             else:
-                import_table[_import_addr_base + 8 * import_idx] = (
+                import_table[_import_addr] = (
                     '%s.#%d' % (
                         import_dll_name,
                         val & 0x0000FFFF,
