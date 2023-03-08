@@ -15,11 +15,12 @@ Inst = namedtuple("Inst", [
     'affects',
     'clears',
     'links',
+    'inbounds',
 ])
 
 
 StateFlag = namedtuple("StateFlag", "name")
-
+MemoryAddr = namedtuple("MemoryAddr", "addr")
 
 def _parse_dest(op_str: str):
     dest = 0
@@ -48,7 +49,7 @@ def parse_func(image: ImageStream):
             if addr in inst_graph:
                 break
 
-            inst_graph[addr] = inst = Inst(mnemonic + ' ' + op_str, *inst_base, [], [], [], [])
+            inst_graph[addr] = inst = Inst(mnemonic + ' ' + op_str, *inst_base, [], [], [], [], [])
             rip_addr = addr + len(code)
             rsp_opnd = Register('rsp', 8)
             of_opnd = StateFlag('OF')
@@ -174,7 +175,16 @@ def parse_func(image: ImageStream):
                 inst.links.append(dest)
                 branch_stack.append(dest)
 
+            elif mnemonic in ['ja', 'jna', 'jbe', 'jnbe']:
+                dest = _parse_dest(op_str)
+                inst.depends.append(zf_opnd)
+                inst.depends.append(cf_opnd)
+                inst.links.append(rip_addr)
+                inst.links.append(dest)
+                branch_stack.append(dest)
+
             elif mnemonic == 'call':
+                # print('!!', op_str)
                 dest = _parse_dest(op_str)
                 inst.affects.append(rax_opnd)
                 inst.clears.append(rcx_opnd)
@@ -185,6 +195,14 @@ def parse_func(image: ImageStream):
                 inst.clears.append(r11_opnd)
                 inst.links.append(rip_addr)
                 call_addr_list.append(dest)
+
+            elif mnemonic == 'lea':
+                dst, src = op_str.split(', ')
+                dst_opnd = parse_opnd(dst, rip_addr)
+                assert src[0] == '[' and src[-1] == ']'
+                inst.depends.append(MemoryAddr(src[1:-1]))
+                inst.affects.append(dst_opnd)
+                inst.links.append(rip_addr)
 
             elif mnemonic == 'ret':
                 break
