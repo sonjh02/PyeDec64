@@ -53,12 +53,12 @@ def parse_func(image: ImageStream):
             r10_opnd = Register('r10', 8)
             r11_opnd = Register('r11', 8)
 
-
             if mnemonic == 'mov':
                 dst, src = op_str.split(', ')
                 inst.depends.append(parse_opnd(src, rip_addr))
                 inst.affects.append(parse_opnd(dst, rip_addr))
                 inst.links.append(rip_addr)
+
             elif mnemonic == 'push':
                 src_opnd = parse_opnd(op_str, rip_addr)
                 size = (
@@ -70,12 +70,14 @@ def parse_func(image: ImageStream):
                 inst.affects.append(MemoryPtr('rsp + %d' % size, size))
                 inst.affects.append(rsp_opnd)
                 inst.links.append(rip_addr)
+
             elif mnemonic == 'pop':
                 src_opnd = parse_opnd(op_str, rip_addr)
                 size = src_opnd.size
                 inst.affects.append(src_opnd)
                 inst.affects.append(rsp_opnd)
                 inst.links.append(rip_addr)
+
             elif mnemonic == 'sub' or mnemonic == 'add':
                 dst, src = op_str.split(', ')
                 inst.depends.append(parse_opnd(src, rip_addr))
@@ -102,8 +104,10 @@ def parse_func(image: ImageStream):
 
             elif mnemonic == 'test':
                 dst, src = op_str.split(', ')
-                inst.depends.append(parse_opnd(src, rip_addr))
-                inst.depends.append(parse_opnd(dst, rip_addr))
+                src_opnd = parse_opnd(src, rip_addr)
+                dst_opnd = parse_opnd(dst, rip_addr)
+                inst.depends.append(src_opnd)
+                inst.depends.append(dst_opnd)
                 inst.affects.append(of_opnd)
                 inst.affects.append(sf_opnd)
                 inst.affects.append(zf_opnd)
@@ -111,7 +115,6 @@ def parse_func(image: ImageStream):
                 inst.affects.append(pf_opnd)
                 inst.affects.append(cf_opnd)
                 inst.links.append(rip_addr)
-                # TODO: same opnd
 
             elif mnemonic == 'jmp':
                 try:
@@ -120,7 +123,6 @@ def parse_func(image: ImageStream):
                     raise NotImplementedError(op_str)
                 inst.links.append(dest)
                 branch_stack.append(dest)
-                print(inst)
                 break
 
             elif mnemonic in ['jne', 'je']:
@@ -156,8 +158,7 @@ def parse_func(image: ImageStream):
                 call_addr_list.append(dest)
 
             else:
-                print(inst)
                 print(call_addr_list)
+                for key, val in inst_graph.items():
+                    print(key, ':', val)
                 raise NotImplementedError(mnemonic)
-
-            print(inst)
