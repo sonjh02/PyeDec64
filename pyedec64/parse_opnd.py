@@ -3,7 +3,7 @@ from collections import namedtuple
 
 Register = namedtuple("Register", ["name", "size"])
 MemoryPtr = namedtuple("MemoryPtr", ["addr", "size"])
-Immediate = namedtuple("Immediate", ["value"])
+Immediate = namedtuple("Immediate", ["expr", "value"])
 
 
 register_sizes = [
@@ -46,6 +46,9 @@ memory_sizes = [
     ('qword ptr ', 8),
 ]
 
+def to_int(target_str: str):
+    return int(target_str, 16) if target_str.startswith('0x') else int(target_str)
+
 
 def parse_opnd(target_str: str, rip_addr: int):
     for prefix, size in memory_sizes:
@@ -54,16 +57,21 @@ def parse_opnd(target_str: str, rip_addr: int):
             assert target_str[-1] == ']'
             target_str = target_str[len(prefix)+1:-1]
             if target_str.startswith('rip + '):
-                return MemoryPtr(rip_addr + int(target_str[6:]), size)
+                return MemoryPtr(rip_addr + to_int(target_str[6:]), size)
             if target_str.startswith('rip - '):
-                return MemoryPtr(rip_addr - int(target_str[6:]), size)
+                return MemoryPtr(rip_addr - to_int(target_str[6:]), size)
             return MemoryPtr(target_str, size)
 
     for size, register_set in register_sizes:
         if target_str in register_set:
             return Register(target_str, size)
 
-    if target_str.startswith('0x'):
-        return Immediate(target_str)
-
-    raise NotImplementedError(target_str)
+    try:
+        return Immediate(
+            target_str,
+            int(target_str, 16)
+            if target_str.startswith('0x')
+            else int(target_str)
+        )
+    except Exception:
+        raise NotImplementedError(target_str)
