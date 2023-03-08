@@ -21,6 +21,18 @@ Inst = namedtuple("Inst", [
 StateFlag = namedtuple("StateFlag", "name")
 
 
+def _parse_dest(op_str: str):
+    dest = 0
+    try:
+        dest = int(op_str, 16) if op_str.startswith('0x') else int(op_str)
+    except Exception:
+        raise NotImplementedError(op_str)
+    return dest
+
+
+def _is_same_register(src_opnd, dst_opnd):
+    return isinstance(src_opnd, Register) and isinstance(dst_opnd, Register) and src_opnd.name == dst_opnd.name
+
 def parse_func(image: ImageStream):
     call_addr_list = list()
     branch_stack = list()
@@ -80,8 +92,12 @@ def parse_func(image: ImageStream):
 
             elif mnemonic == 'sub' or mnemonic == 'add':
                 dst, src = op_str.split(', ')
-                inst.depends.append(parse_opnd(src, rip_addr))
-                inst.affects.append(parse_opnd(dst, rip_addr))
+                src_opnd = parse_opnd(src, rip_addr)
+                dst_opnd = parse_opnd(dst, rip_addr)
+                if not _is_same_register(src_opnd, dst_opnd):
+                    inst.depends.append(dst_opnd)
+                inst.depends.append(src_opnd)
+                inst.affects.append(dst_opnd)
                 inst.affects.append(of_opnd)
                 inst.affects.append(sf_opnd)
                 inst.affects.append(zf_opnd)
@@ -90,10 +106,29 @@ def parse_func(image: ImageStream):
                 inst.affects.append(cf_opnd)
                 inst.links.append(rip_addr)
 
+            elif mnemonic == 'xor':
+                dst, src = op_str.split(', ')
+                src_opnd = parse_opnd(src, rip_addr)
+                dst_opnd = parse_opnd(dst, rip_addr)
+                if not _is_same_register(src_opnd, dst_opnd):
+                    inst.depends.append(dst_opnd)
+                    inst.depends.append(src_opnd)
+                inst.affects.append(dst_opnd)
+                inst.affects.append(of_opnd)
+                inst.affects.append(sf_opnd)
+                inst.affects.append(zf_opnd)
+                inst.clears.append(af_opnd)
+                inst.affects.append(pf_opnd)
+                inst.affects.append(cf_opnd)
+                inst.links.append(rip_addr)
+
             elif mnemonic == 'cmp':
                 dst, src = op_str.split(', ')
-                inst.depends.append(parse_opnd(src, rip_addr))
-                inst.depends.append(parse_opnd(dst, rip_addr))
+                src_opnd = parse_opnd(src, rip_addr)
+                dst_opnd = parse_opnd(dst, rip_addr)
+                if not _is_same_register(src_opnd, dst_opnd):
+                    inst.depends.append(src_opnd)
+                inst.depends.append(dst_opnd)
                 inst.affects.append(of_opnd)
                 inst.affects.append(sf_opnd)
                 inst.affects.append(zf_opnd)
@@ -106,7 +141,8 @@ def parse_func(image: ImageStream):
                 dst, src = op_str.split(', ')
                 src_opnd = parse_opnd(src, rip_addr)
                 dst_opnd = parse_opnd(dst, rip_addr)
-                inst.depends.append(src_opnd)
+                if not _is_same_register(src_opnd, dst_opnd):
+                    inst.depends.append(src_opnd)
                 inst.depends.append(dst_opnd)
                 inst.affects.append(of_opnd)
                 inst.affects.append(sf_opnd)
@@ -117,23 +153,20 @@ def parse_func(image: ImageStream):
                 inst.links.append(rip_addr)
 
             elif mnemonic == 'jmp':
-                try:
-                    dest = int(op_str, 16) if op_str.startswith('0x') else int(op_str)
-                except Exception:
-                    raise NotImplementedError(op_str)
+                dest = _parse_dest(op_str)
                 inst.links.append(dest)
                 branch_stack.append(dest)
                 break
 
             elif mnemonic in ['jne', 'je']:
-                dest = int(op_str, 16) if op_str.startswith('0x') else int(op_str)
+                dest = _parse_dest(op_str)
                 inst.depends.append(zf_opnd)
                 inst.links.append(rip_addr)
                 inst.links.append(dest)
                 branch_stack.append(dest)
 
             elif mnemonic in ['jg', 'jng', 'jnle', 'jle']:
-                dest = int(op_str, 16) if op_str.startswith('0x') else int(op_str)
+                dest = _parse_dest(op_str)
                 inst.depends.append(zf_opnd)
                 inst.depends.append(sf_opnd)
                 inst.depends.append(of_opnd)
@@ -142,11 +175,7 @@ def parse_func(image: ImageStream):
                 branch_stack.append(dest)
 
             elif mnemonic == 'call':
-                dest = 0
-                try:
-                    dest = int(op_str, 16) if op_str.startswith('0x') else int(op_str)
-                except Exception:
-                    raise NotImplementedError(op_str)
+                dest = _parse_dest(op_str)
                 inst.affects.append(rax_opnd)
                 inst.clears.append(rcx_opnd)
                 inst.clears.append(rdx_opnd)
@@ -156,6 +185,9 @@ def parse_func(image: ImageStream):
                 inst.clears.append(r11_opnd)
                 inst.links.append(rip_addr)
                 call_addr_list.append(dest)
+
+            elif mnemonic == 'ret':
+                break
 
             else:
                 print(call_addr_list)
