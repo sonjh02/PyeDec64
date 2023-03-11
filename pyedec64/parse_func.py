@@ -1,26 +1,11 @@
 from collections import namedtuple
 
-from .parse_opnd import parse_opnd, Register, MemoryPtr, Immediate
 from .parse_inst import parse_inst
 from .image_stream import ImageStream
 
 
-Inst = namedtuple("Inst", [
-    'capstone',
-    'code',
-    'addr',
-    'mnemonic',
-    'op_str',
-    'depends',
-    'affects',
-    'clears',
-    'links',
-    'inbounds',
-])
+Inst = namedtuple("Inst", ['asm', 'addr', 'in', 'out', 'hint'])
 
-
-StateFlag = namedtuple("StateFlag", "name")
-MemoryAddr = namedtuple("MemoryAddr", "addr")
 
 def _parse_dest(op_str: str):
     dest = 0
