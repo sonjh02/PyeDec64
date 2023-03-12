@@ -124,6 +124,10 @@ def parse_func(image: ImageStream):
                     break
 
     for key, val in flow_graph.items():
+        for addr in val.outbounds:
+            flow_graph[addr].inbounds.append(key)
+
+    for key, val in flow_graph.items():
         print('Flow %d:' % key)
         print('  inbounds:', val.inbounds)
         print('  outbounds:', val.outbounds)
