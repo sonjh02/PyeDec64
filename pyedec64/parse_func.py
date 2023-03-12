@@ -4,20 +4,42 @@ from .parse_inst import parse_inst
 from .image_stream import ImageStream
 
 
-Inst = namedtuple("Inst", ['asm', 'addr', 'in', 'out', 'hint'])
+Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link'])
 
+_set_simple = {'mov', 'add', 'sub', 'xor', 'cmp', 'or', 'and', 'push', 'pop',
+               'test', 'lea'}
 
-def _parse_dest(op_str: str):
-    dest = 0
+_set_jcc = {'ja', 'jae', 'jb', 'jbe', 'jc', 'jcxz', 'jecxz', 'jrcxz', 'je',
+            'jg', 'jge', 'jl', 'jle', 'jna', 'jnae', 'jnb', 'jnbe', 'jnc',
+            'jne', 'jng', 'jnge', 'jnl', 'jnle', 'jno', 'jnp', 'jns', 'jo',
+            'jp', 'jpe', 'jpo', 'js', 'jz'}
+
+def _to_int(s):
+    return int(s, 16) if s.startswith('0x') else int(s)
+
+def _to_dest(s):
     try:
-        dest = int(op_str, 16) if op_str.startswith('0x') else int(op_str)
+        return _to_int(s)
     except Exception:
-        raise NotImplementedError(op_str)
-    return dest
+        return s
 
-
-def _is_same_register(src_opnd, dst_opnd):
-    return isinstance(src_opnd, Register) and isinstance(dst_opnd, Register) and src_opnd.name == dst_opnd.name
+def _rip_convert(op_str, rip):
+    if op_str.count('[rip ') > 1:
+        raise NotImplementedError('rip_convert: %s' % op_str)
+    p = op_str.find('[rip ')
+    if p == -1:
+        return None, op_str
+    q = op_str.find(']', p + 5)
+    if q == -1:
+        raise ValueError('rip_convert: %s' % op_str)
+    if op_str[p+5] == '+':
+        hint = rip + _to_int(op_str[p+7:q])
+    elif op_str[p+5] == '-':
+        hint = rip - _to_int(op_str[p+7:q])
+    else:
+        raise ValueError('rip_convert: %s' % op_str)
+    op_str = "%s0x%x%s" % (op_str[:p+1], hint, op_str[q:])
+    return hint, op_str
 
 def parse_func(image: ImageStream):
     call_addr_list = list()
@@ -25,175 +47,43 @@ def parse_func(image: ImageStream):
     inst_graph = dict()
 
     branch_stack.append(image.ptr)
-
     while branch_stack:
         image.goto(branch_stack.pop())
         while True:
-            code, addr, mnemonic, op_str = inst_base = parse_inst(image)
+            code, addr, mnemonic, op_str = parse_inst(image)
 
             if addr in inst_graph:
                 break
 
-            inst_graph[addr] = inst = Inst(mnemonic + ' ' + op_str, *inst_base, [], [], [], [], [])
-            rip_addr = addr + len(code)
-            rsp_opnd = Register('rsp', 8)
-            of_opnd = StateFlag('OF')
-            sf_opnd = StateFlag('SF')
-            zf_opnd = StateFlag('ZF')
-            af_opnd = StateFlag('AF')
-            pf_opnd = StateFlag('PF')
-            cf_opnd = StateFlag('CF')
-            rax_opnd = Register('rax', 8)
-            rcx_opnd = Register('rcx', 8)
-            rdx_opnd = Register('rdx', 8)
-            r8_opnd = Register('r8', 8)
-            r9_opnd = Register('r9', 8)
-            r10_opnd = Register('r10', 8)
-            r11_opnd = Register('r11', 8)
+            rip = addr + len(code)
+            hint, op_str = _rip_convert(op_str, rip)
+            asm = mnemonic + ": " + op_str
+            inst = inst_graph[addr] = Inst(asm, addr, hint, [])
 
-            if mnemonic == 'mov':
-                dst, src = op_str.split(', ')
-                inst.depends.append(parse_opnd(src, rip_addr))
-                inst.affects.append(parse_opnd(dst, rip_addr))
-                inst.links.append(rip_addr)
+            if mnemonic in _set_simple:
+                inst.link.append(rip)
 
-            elif mnemonic == 'push':
-                src_opnd = parse_opnd(op_str, rip_addr)
-                size = (
-                    len(code) - 1
-                    if isinstance(src_opnd, Immediate)
-                    else src_opnd.size
-                )
-                inst.depends.append(src_opnd)
-                inst.affects.append(MemoryPtr('rsp + %d' % size, size))
-                inst.affects.append(rsp_opnd)
-                inst.links.append(rip_addr)
-
-            elif mnemonic == 'pop':
-                src_opnd = parse_opnd(op_str, rip_addr)
-                size = src_opnd.size
-                inst.affects.append(src_opnd)
-                inst.affects.append(rsp_opnd)
-                inst.links.append(rip_addr)
-
-            elif mnemonic == 'sub' or mnemonic == 'add':
-                dst, src = op_str.split(', ')
-                src_opnd = parse_opnd(src, rip_addr)
-                dst_opnd = parse_opnd(dst, rip_addr)
-                if not _is_same_register(src_opnd, dst_opnd):
-                    inst.depends.append(dst_opnd)
-                inst.depends.append(src_opnd)
-                inst.affects.append(dst_opnd)
-                inst.affects.append(of_opnd)
-                inst.affects.append(sf_opnd)
-                inst.affects.append(zf_opnd)
-                inst.affects.append(af_opnd)
-                inst.affects.append(pf_opnd)
-                inst.affects.append(cf_opnd)
-                inst.links.append(rip_addr)
-
-            elif mnemonic == 'xor':
-                dst, src = op_str.split(', ')
-                src_opnd = parse_opnd(src, rip_addr)
-                dst_opnd = parse_opnd(dst, rip_addr)
-                if not _is_same_register(src_opnd, dst_opnd):
-                    inst.depends.append(dst_opnd)
-                    inst.depends.append(src_opnd)
-                inst.affects.append(dst_opnd)
-                inst.affects.append(of_opnd)
-                inst.affects.append(sf_opnd)
-                inst.affects.append(zf_opnd)
-                inst.clears.append(af_opnd)
-                inst.affects.append(pf_opnd)
-                inst.affects.append(cf_opnd)
-                inst.links.append(rip_addr)
-
-            elif mnemonic == 'cmp':
-                dst, src = op_str.split(', ')
-                src_opnd = parse_opnd(src, rip_addr)
-                dst_opnd = parse_opnd(dst, rip_addr)
-                if not _is_same_register(src_opnd, dst_opnd):
-                    inst.depends.append(src_opnd)
-                inst.depends.append(dst_opnd)
-                inst.affects.append(of_opnd)
-                inst.affects.append(sf_opnd)
-                inst.affects.append(zf_opnd)
-                inst.affects.append(af_opnd)
-                inst.affects.append(pf_opnd)
-                inst.affects.append(cf_opnd)
-                inst.links.append(rip_addr)
-
-            elif mnemonic == 'test':
-                dst, src = op_str.split(', ')
-                src_opnd = parse_opnd(src, rip_addr)
-                dst_opnd = parse_opnd(dst, rip_addr)
-                if not _is_same_register(src_opnd, dst_opnd):
-                    inst.depends.append(src_opnd)
-                inst.depends.append(dst_opnd)
-                inst.affects.append(of_opnd)
-                inst.affects.append(sf_opnd)
-                inst.affects.append(zf_opnd)
-                inst.clears.append(af_opnd)
-                inst.affects.append(pf_opnd)
-                inst.affects.append(cf_opnd)
-                inst.links.append(rip_addr)
-
-            elif mnemonic == 'jmp':
-                dest = _parse_dest(op_str)
-                inst.links.append(dest)
+            elif mnemonic in _set_jcc:
+                dest = _to_int(op_str)
+                inst.link.append(dest)
                 branch_stack.append(dest)
-                break
-
-            elif mnemonic in ['jne', 'je']:
-                dest = _parse_dest(op_str)
-                inst.depends.append(zf_opnd)
-                inst.links.append(rip_addr)
-                inst.links.append(dest)
-                branch_stack.append(dest)
-
-            elif mnemonic in ['jg', 'jng', 'jnle', 'jle']:
-                dest = _parse_dest(op_str)
-                inst.depends.append(zf_opnd)
-                inst.depends.append(sf_opnd)
-                inst.depends.append(of_opnd)
-                inst.links.append(rip_addr)
-                inst.links.append(dest)
-                branch_stack.append(dest)
-
-            elif mnemonic in ['ja', 'jna', 'jbe', 'jnbe']:
-                dest = _parse_dest(op_str)
-                inst.depends.append(zf_opnd)
-                inst.depends.append(cf_opnd)
-                inst.links.append(rip_addr)
-                inst.links.append(dest)
-                branch_stack.append(dest)
+                inst.link.append(rip)
 
             elif mnemonic == 'call':
-                # print('!!', op_str)
-                dest = _parse_dest(op_str)
-                inst.affects.append(rax_opnd)
-                inst.clears.append(rcx_opnd)
-                inst.clears.append(rdx_opnd)
-                inst.clears.append(r8_opnd)
-                inst.clears.append(r9_opnd)
-                inst.clears.append(r10_opnd)
-                inst.clears.append(r11_opnd)
-                inst.links.append(rip_addr)
+                dest = _to_dest(op_str)
                 call_addr_list.append(dest)
+                inst.link.append(rip)
 
-            elif mnemonic == 'lea':
-                dst, src = op_str.split(', ')
-                dst_opnd = parse_opnd(dst, rip_addr)
-                assert src[0] == '[' and src[-1] == ']'
-                inst.depends.append(MemoryAddr(src[1:-1]))
-                inst.affects.append(dst_opnd)
-                inst.links.append(rip_addr)
+            elif mnemonic == 'jmp':
+                dest = _to_dest(op_str)
+                if type(dest) != int:
+                    raise NotImplementedError('Indirect jump')
+                inst.link.append(dest)
+                branch_stack.append(dest)
+                break
 
             elif mnemonic == 'ret':
                 break
 
             else:
-                print(call_addr_list)
-                for key, val in inst_graph.items():
-                    print(key, ':', val)
                 raise NotImplementedError(mnemonic)
