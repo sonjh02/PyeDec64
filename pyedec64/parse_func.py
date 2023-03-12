@@ -5,6 +5,8 @@ from .image_stream import ImageStream
 
 
 Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link'])
+CodeBlock = namedtuple("CodeBlock", ['inst_list', 'inbounds', 'outbounds'])
+Func = namedtuple("Func", ['flow_graph', 'near_calls', 'far_calls'])
 
 _set_simple = {'mov', 'add', 'sub', 'xor', 'cmp', 'or', 'and', 'push', 'pop',
                'test', 'lea'}
@@ -42,11 +44,15 @@ def _rip_convert(op_str, rip):
     return hint, op_str
 
 def parse_func(image: ImageStream):
+
+    func_entry = image.ptr
+
     call_addr_list = list()
     branch_stack = list()
     inst_graph = dict()
+    inbound_set = {func_entry}
 
-    branch_stack.append(image.ptr)
+    branch_stack.append(func_entry)
     while branch_stack:
         image.goto(branch_stack.pop())
         while True:
@@ -67,6 +73,7 @@ def parse_func(image: ImageStream):
                 dest = _to_int(op_str)
                 inst.link.append(dest)
                 branch_stack.append(dest)
+                inbound_set.add(dest)
                 inst.link.append(rip)
 
             elif mnemonic == 'call':
@@ -80,6 +87,7 @@ def parse_func(image: ImageStream):
                     raise NotImplementedError('Indirect jump')
                 inst.link.append(dest)
                 branch_stack.append(dest)
+                inbound_set.add(dest)
                 break
 
             elif mnemonic == 'ret':
