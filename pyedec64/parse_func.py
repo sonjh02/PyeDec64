@@ -5,7 +5,7 @@ from .image_stream import ImageStream
 
 
 Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link'])
-CodeBlock = namedtuple("CodeBlock", ['inst_list', 'inbounds', 'outbounds'])
+Flow = namedtuple("Flow", ['inst_list', 'inbounds', 'outbounds'])
 Func = namedtuple("Func", ['flow_graph', 'near_calls', 'far_calls'])
 
 _set_simple = {'mov', 'add', 'sub', 'xor', 'cmp', 'or', 'and', 'push', 'pop',
@@ -47,10 +47,12 @@ def parse_func(image: ImageStream):
 
     func_entry = image.ptr
 
-    call_addr_list = list()
+    near_calls = list()
+    far_calls = list()
+
     branch_stack = list()
     inst_graph = dict()
-    inbound_set = {func_entry}
+    flow_entry_set = {func_entry}
 
     branch_stack.append(func_entry)
     while branch_stack:
@@ -71,23 +73,26 @@ def parse_func(image: ImageStream):
 
             elif mnemonic in _set_jcc:
                 dest = _to_int(op_str)
+                inst.link.append(rip)
                 inst.link.append(dest)
                 branch_stack.append(dest)
-                inbound_set.add(dest)
-                inst.link.append(rip)
+                flow_entry_set.add(dest)
 
             elif mnemonic == 'call':
                 dest = _to_dest(op_str)
-                call_addr_list.append(dest)
+                if type(dest) is int:
+                    near_calls.append(dest)
+                else:
+                    far_calls.append(dest)
                 inst.link.append(rip)
 
             elif mnemonic == 'jmp':
                 dest = _to_dest(op_str)
-                if type(dest) != int:
+                if type(dest) is not int:
                     raise NotImplementedError('Indirect jump')
                 inst.link.append(dest)
                 branch_stack.append(dest)
-                inbound_set.add(dest)
+                flow_entry_set.add(dest)
                 break
 
             elif mnemonic == 'ret':
@@ -95,3 +100,32 @@ def parse_func(image: ImageStream):
 
             else:
                 raise NotImplementedError(mnemonic)
+
+    flow_graph = dict()
+    for flow_entry in flow_entry_set:
+        while flow_entry not in flow_graph:
+            flow = flow_graph[flow_entry] = Flow([], [], [])
+            addr = flow_entry
+            while True:
+                if addr not in inst_graph:
+                    raise ValueError(addr)
+                if addr != flow_entry and addr in flow_entry_set:
+                    flow.outbounds.append(addr)
+                    flow_entry = addr
+                    break
+                inst = inst_graph[addr]
+                flow.inst_list.append(inst)
+                if len(inst.link) == 1:
+                    addr = inst.link[0]
+                else:
+                    if inst.link:
+                        flow_entry = inst.link[0]
+                        flow.outbounds.extend(inst.link)
+                    break
+
+    for key, val in flow_graph.items():
+        print('Flow %d:' % key)
+        print('  inbounds:', val.inbounds)
+        print('  outbounds:', val.outbounds)
+        for inst in val.inst_list:
+            print(" ", inst)
