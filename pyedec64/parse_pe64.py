@@ -139,7 +139,7 @@ def parse_pe64(file, dir_path):
                                 f.write('```\n')
                                 func_stack.append(call_addr)
                             else:
-                                import_addr = int(call_addr[11:-1], 16)
+                                import_addr = inst.hint
                                 if import_addr in import_table:
                                     f.write(" (%s)\n" % import_table[import_addr].split("@")[0])
                                 else:

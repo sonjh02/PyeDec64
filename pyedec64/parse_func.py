@@ -8,7 +8,8 @@ Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link', 'call'])
 Flow = namedtuple("Flow", ['inst_list', 'inbounds', 'outbounds'])
 
 _set_simple = {'mov', 'add', 'sub', 'xor', 'cmp', 'or', 'and', 'push', 'pop',
-               'test', 'lea', 'nop', 'inc'}
+               'test', 'lea', 'nop', 'inc', 'movabs', 'movups', 'shl', 'cmove',
+               'not', 'movzx'}
 
 _set_jcc = {'ja', 'jae', 'jb', 'jbe', 'jc', 'jcxz', 'jecxz', 'jrcxz', 'je',
             'jg', 'jge', 'jl', 'jle', 'jna', 'jnae', 'jnb', 'jnbe', 'jnc',
@@ -24,7 +25,7 @@ def _to_dest(s):
     except Exception:
         return s
 
-def _rip_convert(op_str, rip_addr):
+def _rip_convert(op_str, rip):
     if op_str.count('[rip ') > 1:
         raise NotImplementedError('rip_convert: %s' % op_str)
     p = op_str.find('[rip ')
@@ -34,9 +35,9 @@ def _rip_convert(op_str, rip_addr):
     if q == -1:
         raise ValueError('rip_convert: %s' % op_str)
     if op_str[p+5] == '+':
-        hint = rip_addr + _to_int(op_str[p+7:q])
+        hint = rip + _to_int(op_str[p+7:q])
     elif op_str[p+5] == '-':
-        hint = rip_addr - _to_int(op_str[p+7:q])
+        hint = rip - _to_int(op_str[p+7:q])
     else:
         raise ValueError('rip_convert: %s' % op_str)
     op_str = "%s0x%x%s" % (op_str[:p+1], hint, op_str[q:])
