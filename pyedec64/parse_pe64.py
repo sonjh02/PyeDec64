@@ -1,7 +1,8 @@
 from .image_stream import ImageStream
+from .parse_func import parse_func
 
 
-def parse_pe64(file):
+def parse_pe64(file, fp):
     rs = ImageStream()
     with open(file, 'rb') as f:
         rs.add(0, f.read())
@@ -94,4 +95,25 @@ def parse_pe64(file):
             import_idx += 1
         import_dll_idx += 1
 
-        return vs, export_table, import_table
+    image = vs
+
+    fp.write("# Import Table\n")
+    for key, val in import_table.items():
+        fp.write("- [0x%08x] %s\n" % (key, val.split("@")[0]))
+
+    fp.write("# Export Table\n")
+    for key, val in export_table.items():
+        fp.write("- [[0x%08x](#function-0x%08x)] %s\n" % (key, key, val.split("@")[0]))
+
+    func_set = set()
+    func_stack = list()
+
+    def print_func(key):
+        flow_graph = parse_func(image, key)
+
+    for key, val in export_table.items():
+        fp.write("# Function 0x%08x\n" % key)
+        fp.write("(%s)\n" % val.split("@")[0])
+
+
+    # return vs, export_table, import_table

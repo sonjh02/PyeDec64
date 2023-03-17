@@ -4,7 +4,7 @@ from .parse_inst import parse_inst
 from .image_stream import ImageStream
 
 
-Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link'])
+Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link', 'call'])
 Flow = namedtuple("Flow", ['inst_list', 'inbounds', 'outbounds'])
 Func = namedtuple("Func", ['flow_graph', 'near_calls', 'far_calls'])
 
@@ -43,12 +43,7 @@ def _rip_convert(op_str, rip):
     op_str = "%s0x%x%s" % (op_str[:p+1], hint, op_str[q:])
     return hint, op_str
 
-def parse_func(image: ImageStream):
-
-    func_entry = image.ptr
-
-    near_calls = list()
-    far_calls = list()
+def parse_func(image: ImageStream, func_entry: int):
 
     branch_stack = list()
     inst_graph = dict()
@@ -66,7 +61,7 @@ def parse_func(image: ImageStream):
             rip = addr + len(code)
             hint, op_str = _rip_convert(op_str, rip)
             asm = mnemonic + ": " + op_str
-            inst = inst_graph[addr] = Inst(asm, addr, hint, [])
+            inst = inst_graph[addr] = Inst(asm, addr, hint, [], [])
 
             if mnemonic in _set_simple:
                 inst.link.append(rip)
@@ -80,11 +75,8 @@ def parse_func(image: ImageStream):
 
             elif mnemonic == 'call':
                 dest = _to_dest(op_str)
-                if type(dest) is int:
-                    near_calls.append(dest)
-                else:
-                    far_calls.append(dest)
                 inst.link.append(rip)
+                inst.call.append(dest)
 
             elif mnemonic == 'jmp':
                 dest = _to_dest(op_str)
@@ -127,9 +119,4 @@ def parse_func(image: ImageStream):
         for addr in val.outbounds:
             flow_graph[addr].inbounds.append(key)
 
-    for key, val in flow_graph.items():
-        print('Flow %d:' % key)
-        print('  inbounds:', val.inbounds)
-        print('  outbounds:', val.outbounds)
-        for inst in val.inst_list:
-            print(" ", inst)
+    return flow_graph
