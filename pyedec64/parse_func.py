@@ -24,7 +24,7 @@ def _to_dest(s):
     except Exception:
         return s
 
-def _rip_convert(op_str, rip):
+def _rip_convert(op_str, rip_addr):
     if op_str.count('[rip ') > 1:
         raise NotImplementedError('rip_convert: %s' % op_str)
     p = op_str.find('[rip ')
@@ -34,9 +34,9 @@ def _rip_convert(op_str, rip):
     if q == -1:
         raise ValueError('rip_convert: %s' % op_str)
     if op_str[p+5] == '+':
-        hint = rip + _to_int(op_str[p+7:q])
+        hint = rip_addr + _to_int(op_str[p+7:q])
     elif op_str[p+5] == '-':
-        hint = rip - _to_int(op_str[p+7:q])
+        hint = rip_addr - _to_int(op_str[p+7:q])
     else:
         raise ValueError('rip_convert: %s' % op_str)
     op_str = "%s0x%x%s" % (op_str[:p+1], hint, op_str[q:])
@@ -59,7 +59,7 @@ def parse_func(image: ImageStream, func_entry: int):
 
             rip = addr + len(code)
             hint, op_str = _rip_convert(op_str, rip)
-            asm = mnemonic + ": " + op_str
+            asm = "%8s: %s" % (mnemonic, op_str)
             inst = inst_graph[addr] = Inst(asm, addr, hint, [], [])
 
             if mnemonic in _set_simple:

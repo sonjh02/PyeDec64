@@ -119,7 +119,7 @@ def parse_pe64(file, dir_path):
             with open(dir_path + "/func_0x%08x.md" % func_addr, "w") as f:
                 f.write("- Function 0x%08x" % func_addr)
                 if func_addr in export_table:
-                    f.write(" = %s" % export_table[func_addr])
+                    f.write(" = %s" % export_table[func_addr].split("@")[0])
                 f.write("\n")
                 f.write("- Goto [Entry](#flow-0x%08x)\n" % func_addr)
                 for flow_addr, flow_item in parse_func(image, func_addr).items():
@@ -128,6 +128,25 @@ def parse_pe64(file, dir_path):
                     for in_addr in flow_item.inbounds:
                         f.write(" [0x%08x](#flow-0x%08x)" % (in_addr, in_addr))
                     f.write("\n")
+                    f.write('```\n')
+                    for inst in flow_item.inst_list:
+                        f.write("%s" % inst.asm)
+                        if inst.call:
+                            call_addr = inst.call[0]
+                            if type(call_addr) is int:
+                                f.write('\n```\n')
+                                f.write("[func_0x%08x](./func_0x%08x.md)\n" % (call_addr, call_addr))
+                                f.write('```\n')
+                                func_stack.append(call_addr)
+                            else:
+                                import_addr = int(call_addr[11:-1], 16)
+                                if import_addr in import_table:
+                                    f.write(" (%s)\n" % import_table[import_addr].split("@")[0])
+                                else:
+                                    f.write(" (??)\n")
+                        else:
+                            f.write("\n")
+                    f.write('```\n')
                     f.write("- outbound:")
                     for out_addr in flow_item.outbounds:
                         f.write(" [0x%08x](#flow-0x%08x)" % (out_addr, out_addr))
