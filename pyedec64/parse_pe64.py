@@ -2,7 +2,7 @@ from .image_stream import ImageStream
 from .parse_func import parse_func
 
 
-def parse_pe64(file, fp):
+def parse_pe64(file, dir_path):
     rs = ImageStream()
     with open(file, 'rb') as f:
         rs.add(0, f.read())
@@ -96,24 +96,58 @@ def parse_pe64(file, fp):
         import_dll_idx += 1
 
     image = vs
-
-    fp.write("# Import Table\n")
-    for key, val in import_table.items():
-        fp.write("- [0x%08x] %s\n" % (key, val.split("@")[0]))
-
-    fp.write("# Export Table\n")
-    for key, val in export_table.items():
-        fp.write("- [[0x%08x](#function-0x%08x)] %s\n" % (key, key, val.split("@")[0]))
-
-    func_set = set()
+    func_visit = set()
     func_stack = list()
 
-    def print_func(key):
-        flow_graph = parse_func(image, key)
+    with open(dir_path + "/imports.md", "w") as f:
+        f.write("# Import Table\n")
+        for addr, name in import_table.items():
+            f.write("- 0x%08x = %s\n"  % (addr, name.split("@")[0]))
 
-    for key, val in export_table.items():
-        fp.write("# Function 0x%08x\n" % key)
-        fp.write("(%s)\n" % val.split("@")[0])
+    with open(dir_path + "/exports.md", "w") as f:
+        f.write("# Export Table\n")
+        for addr, name in export_table.items():
+            f.write("- [0x%08x](./func_0x%08x.md) = %s\n"  % (addr, addr, name.split("@")[0]))
+
+    for func_addr in export_table:
+        func_stack.append(func_addr)
+        while func_stack:
+            func_addr = func_stack.pop()
+            if func_addr in func_visit:
+                continue
+            func_visit.add(func_addr)
+            with open(dir_path + "/func_0x%08x.md" % func_addr, "w") as f:
+                f.write("- Function 0x%08x" % func_addr)
+                if func_addr in export_table:
+                    f.write(" = %s" % export_table[func_addr])
+                f.write("\n")
+                f.write("- Goto [Entry](#flow-0x%08x)\n" % func_addr)
+                for flow_addr, flow_item in parse_func(image, func_addr).items():
+                    f.write("# Flow 0x%08x\n" % flow_addr)
+                    f.write("- inbound:")
+                    for in_addr in flow_item.inbounds:
+                        f.write(" [0x%08x](#flow-0x%08x)" % (in_addr, in_addr))
+                    f.write("\n")
+                    f.write("- outbound:")
+                    for out_addr in flow_item.outbounds:
+                        f.write(" [0x%08x](#flow-0x%08x)" % (out_addr, out_addr))
+                    f.write("\n")
+
+
+
+    # def print_func(func_addr, func_name):
+    #     func_set.add(func_addr)
+    #     fp.write("# Function 0x%08x\n" % func_addr)
+    #     fp.write("[(%s)](##flow-0x%08x)\n" % (func_name, func_addr))
+    #     for addr, flow in parse_func(image, func_addr).items():
+    #         fp.write("## Flow 0x%08x\n" % addr)
+    #         fp.write("inbounds:")
+    #         for in_addr in flow.inbounds:
+    #             fp.write(" [0x%08x](##flow-0x%08x)" % (in_addr, in_addr))
+    #         fp.write("\n")
+
+    # for addr, name in export_table.items():
+    #     print_func(addr, name.split("@")[0])
 
 
     # return vs, export_table, import_table

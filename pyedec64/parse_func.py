@@ -6,10 +6,9 @@ from .image_stream import ImageStream
 
 Inst = namedtuple("Inst", ['asm', 'addr', 'hint', 'link', 'call'])
 Flow = namedtuple("Flow", ['inst_list', 'inbounds', 'outbounds'])
-Func = namedtuple("Func", ['flow_graph', 'near_calls', 'far_calls'])
 
 _set_simple = {'mov', 'add', 'sub', 'xor', 'cmp', 'or', 'and', 'push', 'pop',
-               'test', 'lea'}
+               'test', 'lea', 'nop', 'inc'}
 
 _set_jcc = {'ja', 'jae', 'jb', 'jbe', 'jc', 'jcxz', 'jecxz', 'jrcxz', 'je',
             'jg', 'jge', 'jl', 'jle', 'jna', 'jnae', 'jnb', 'jnbe', 'jnc',
