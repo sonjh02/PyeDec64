@@ -9,12 +9,26 @@ Flow = namedtuple("Flow", ['inst_list', 'inbounds', 'outbounds'])
 
 _set_simple = {'mov', 'add', 'sub', 'xor', 'cmp', 'or', 'and', 'push', 'pop',
                'test', 'lea', 'nop', 'inc', 'movabs', 'movups', 'shl', 'cmove',
-               'not', 'movzx'}
+               'not', 'movzx', 'setne', 'setna', 'sete', 'dec', 'cpuid', 'bt',
+               'xgetbv', 'ror', 'movsd', 'cmpxchg', 'lock cmpxchg', 'movsxd',
+               'xchg', 'cmova', 'movsx', 'imul', 'shr', 'xorps', 'xorpd',
+               'cvtsi2ss', 'movss', 'addss', 'divss', 'comiss', 'sar', 'sal',
+               'rep stosq', 'cmovb', 'cdq', 'cmovs', 'cmovg', 'neg', 'sbb',
+               'rol', 'lock xadd', 'setb', 'movdqa', 'cmovbe', 'cmovae',
+               'cmovne', 'movdqu', 'movq', 'psrldq', 'cvtsi2sd', 'addsd',
+               'divsd', 'mulsd', 'cvttsd2si', 'outsb', 'mul', 'movd', 'cdqe',
+               'seta', 'movaps', 'loopne', 'cqo', 'insb', 'setg', 'lock inc',
+               'cmovo', 'cvtdq2ps', 'cvtpd2ps', 'cvtdq2pd', 'cvtss2sd', 'subsd',
+               'idiv', 'outsd', 'ucomiss', 'comisd', 'andps', 'unpcklpd',
+               'subss', 'cvttss2si', 'mulss', 'cvtsd2ss', 'ucomisd', 'btr',
+               'bts', 'rep stosd'}
 
 _set_jcc = {'ja', 'jae', 'jb', 'jbe', 'jc', 'jcxz', 'jecxz', 'jrcxz', 'je',
             'jg', 'jge', 'jl', 'jle', 'jna', 'jnae', 'jnb', 'jnbe', 'jnc',
             'jne', 'jng', 'jnge', 'jnl', 'jnle', 'jno', 'jnp', 'jns', 'jo',
-            'jp', 'jpe', 'jpo', 'js', 'jz'}
+            'jp', 'jpe', 'jpo', 'js', 'jz', 'bnd jne', 'bnd jae'}
+
+_set_end = {'ret', 'int3', 'int', 'bnd ret', 'retf'}
 
 def _to_int(s):
     return int(s, 16) if s.startswith('0x') else int(s)
@@ -80,14 +94,13 @@ def parse_func(image: ImageStream, func_entry: int):
 
             elif mnemonic == 'jmp':
                 dest = _to_dest(op_str)
-                if type(dest) is not int:
-                    raise NotImplementedError('Indirect jump')
-                inst.link.append(dest)
-                branch_stack.append(dest)
-                flow_entry_set.add(dest)
+                if type(dest) is int:
+                    inst.link.append(dest)
+                    branch_stack.append(dest)
+                    flow_entry_set.add(dest)
                 break
 
-            elif mnemonic == 'ret':
+            elif mnemonic in _set_end:
                 break
 
             else:
