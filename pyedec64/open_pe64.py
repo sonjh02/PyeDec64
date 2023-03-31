@@ -1,5 +1,18 @@
+from typing import Any
+
 import numpy as np
 from struct import unpack
+from dataclasses import dataclass
+
+
+@dataclass
+class PE64:
+    name: str
+    image: bytes
+    entry_addr: int
+    export_dict: dict[int, str]
+    import_dict: dict[int, str]
+    section_dict: dict[bytes, tuple[int, int, int, int]]
 
 
 def read2(b, p = 0):
@@ -8,6 +21,15 @@ def read2(b, p = 0):
 
 def read4(b, p = 0):
     return unpack("L", b[p : p + 4])[0]
+
+
+def reads(b, p = 0):
+    ret = ""
+    while b[p]:
+        assert 32 <= b[p] < 127, "Invalid Character"
+        ret += chr(b[p])
+        p += 1
+    return ret
 
 
 def open_pe64(file: str):
@@ -34,191 +56,74 @@ def open_pe64(file: str):
     max_addr = 0
     section_dict = dict()
     for section_idx in range(section_cnt):
-        section_base = _pe_header_ptr + 264 + section_idx * 40
-        section_name = b_file[section_base : section_base + 8]
-        section_info = tuple(
-            read4(b_file, section_base + 8 + 4 * i)
-            for i in range(4)
-        )
-        section_dict[section_name] = section_info
-        max_addr = max(max_addr, section_info[0] + section_info[1])
+        base = _pe_header_ptr + 264 + section_idx * 40
+        name = b_file[base : base + 8]
+        info = tuple(read4(b_file, base + 8 + 4 * i) for i in range(4))
+        section_dict[name] = info
+        max_addr = max(max_addr, info[0] + info[1])
 
     v_imag = np.zeros(max_addr, "B")
-    for vsize, vaddr, bsize, baddr in section_dict.values():
-        sz = min(vsize, bsize)
-        v_imag[vaddr : vaddr + sz] = np.frombuffer(b_file, "B", offset = baddr)[:sz]
-
+    for vs, va, bs, ba in section_dict.values():
+        sz = min(vs, bs)
+        v_imag[va : va + sz] = np.frombuffer(b_file, "B", offset = ba)[:sz]
     b_imag = memoryview(v_imag).tobytes()
 
+    _export_flags = read4(b_imag, _export_table_addr)
+    assert _export_flags == 0, "Invalid Export Flags"
 
+    _export_pe_name_addr = read4(b_imag, _export_table_addr + 12)
+    _export_addr_table_size = read4(b_imag, _export_table_addr + 20)
+    _export_name_ptr_cnt = read4(b_imag, _export_table_addr + 24)
+    assert _export_addr_table_size == _export_name_ptr_cnt, "Invalid Export Size"
+    _export_addr_table_addr = read4(b_imag, _export_table_addr + 28)
+    _export_name_ptr_addr = read4(b_imag, _export_table_addr + 32)
 
+    export_cnt = _export_addr_table_size
+    export_pe_name = reads(b_imag, _export_pe_name_addr)
+    export_dict = {entry_addr: "%s.!entry" % export_pe_name}
+    for export_idx in range(export_cnt):
+        addr = read4(b_imag, _export_addr_table_addr + export_idx * 8)
+        _name_addr = read4(b_imag, _export_name_ptr_addr + export_idx * 4)
+        name = reads(b_imag, _name_addr)
+        export_dict[addr] = "%s.%s" % (export_pe_name, name)
+    # for key, val in export_dict.items():
+    #     print("[0x%08x] %s" % (key, val))
 
-
-    raise NotImplementedError()
-
-
-
-
-
-
-
-    rs = ImageStream()
-    with open(file, 'rb') as f:
-        rs.add(0, f.read())
-    rs.goto(0x3c)
-    rs.goto(rs.read4())
-    assert rs.read(4) == b'PE\x00\x00'
-    rs.skip(2)
-    _section_cnt = rs.read2()
-    rs.skip(16)
-    assert rs.read2() == 0x020b
-    rs.skip(14)
-
-    entry_addr = rs.read4()
-
-    rs.skip(88)
-
-    data_dir_list = [
-        rs.read4s(2)
-        for _ in range(rs.read4())
-    ]
-    section_list = [
-        (rs.read(8), *rs.read4s(4), rs.read(16))
-        for _ in range(_section_cnt)
-    ]
-
-    vs = ImageStream()
-    for _, vsize, vaddr, rsize, raddr, _ in section_list:
-        rs.goto(raddr)
-        data = rs.read(rsize)
-        if vsize > rsize:
-            data += b'\x00' * (vsize - rsize)
-        vs.add(vaddr, data[:vsize])
-
-    vs.goto(data_dir_list[0][0])
-    assert vs.read4() == 0
-    vs.skip(8)
-    _pe_name = vs.reads(vs.read4())
-    _ord_base = vs.read4()
-    _export_cnt = vs.read4()
-    assert _export_cnt == vs.read4()
-    _export_addr_table = vs.read4()
-    _export_name_table = vs.read4()
-    _export_ord_table = vs.read4()
-
-    export_table = {entry_addr: '%s.main' % _pe_name}
-    for export_idx in range(_export_cnt):
-        vs.goto(_export_addr_table + 8 * export_idx)
-        export_addr = vs.read4()
-        vs.goto(_export_name_table + 4 * export_idx)
-        export_name = vs.reads(vs.read4())
-        vs.goto(_export_ord_table + 2 * export_idx)
-        export_ord = _ord_base + vs.read2()
-        export_table[export_addr] = '%s.#%d.%s' % (
-            _pe_name,
-            export_ord,
-            export_name,
-        )
-
-    import_table = dict()
-    import_dll_idx = 0
+    import_dict = dict()
+    _import_dll_idx = 0
     while True:
-        vs.goto(data_dir_list[1][0] + 20 * import_dll_idx)
-        _import_name_table = vs.read4()
-        if _import_name_table == 0:
+        dll_base = _import_table_addr + 20 * _import_dll_idx
+        lookup_table_addr = read4(b_imag, dll_base)
+        if lookup_table_addr == 0:
             break
-        vs.skip(8)
-        import_dll_name = vs.reads(vs.read4())
-        _import_addr_base = vs.read4()
-        import_idx = 0
+        _dll_name_addr = read4(b_imag, dll_base + 12)
+        dll_name  = reads(b_imag, _dll_name_addr)
+        sym_addr_base = read4(b_imag, dll_base + 16)
+
+        _import_sym_idx = 0
         while True:
-            vs.goto(_import_name_table + 8 * import_idx)
-            _import_addr = _import_addr_base + 8 * import_idx
-            val, flag = vs.read4s(2)
-            if flag == 0:
-                if val == 0:
-                    break
-                import_table[_import_addr] = (
-                    '%s.%s' % (
-                        import_dll_name,
-                        vs.reads(val + 2),
-                    )
-                )
+            sym_base = lookup_table_addr + 8 * _import_sym_idx
+            sym_addr = sym_addr_base + 8 * _import_sym_idx
+            sym_name_addr = read4(b_imag, sym_base)
+            sym_flag = read4(b_imag, sym_base + 4)
+            if sym_flag:
+                sym_ord = sym_name_addr & 0x0000FFFF
+                import_dict[sym_addr] = "%s.#%d" % (dll_name, sym_ord)
+            elif sym_name_addr:
+                sym_name = reads(b_imag, sym_name_addr + 2)
+                import_dict[sym_addr] = '%s.%s' % (dll_name, sym_name)
             else:
-                import_table[_import_addr] = (
-                    '%s.#%d' % (
-                        import_dll_name,
-                        val & 0x0000FFFF,
-                    )
-                )
-            import_idx += 1
-        import_dll_idx += 1
+                break
+            _import_sym_idx += 1
+        _import_dll_idx += 1
+    # for i in import_dict.items():
+    #     print("[0x%08x] %s" % i)
 
-
-    image = vs
-
-    image.goto(0x4f220)
-    print(image.read(64))
-    # bytes: bytearray = image.read(64)
-    # print(bytes)
-    # print(bytes.decode('utf-8'))
-
-
-    # func_visit = set()
-    # func_stack = list()
-
-    # with open(dir_path + "/imports.md", "w") as f:
-    #     f.write("# Import Table\n")
-    #     for addr, name in import_table.items():
-    #         f.write("- 0x%08x = %s\n"  % (addr, name.split("@")[0]))
-
-    # with open(dir_path + "/exports.md", "w") as f:
-    #     f.write("# Export Table\n")
-    #     for addr, name in export_table.items():
-    #         f.write("- [0x%08x](./func_0x%08x.md) = %s\n"  % (addr, addr, name.split("@")[0]))
-
-    # for func_addr in export_table:
-    #     func_stack.append(func_addr)
-    #     while func_stack:
-    #         func_addr = func_stack.pop()
-    #         if func_addr in func_visit:
-    #             continue
-    #         func_visit.add(func_addr)
-    #         try:
-    #             with open(dir_path + "/func_0x%08x.md" % func_addr, "w") as f:
-    #                 f.write("- Function 0x%08x" % func_addr)
-    #                 if func_addr in export_table:
-    #                     f.write(" = %s" % export_table[func_addr].split("@")[0])
-    #                 f.write("\n")
-    #                 f.write("- Goto [Entry](#flow-0x%08x)\n" % func_addr)
-    #                 for flow_addr, flow_item in parse_func(image, func_addr).items():
-    #                     f.write("# Flow 0x%08x\n" % flow_addr)
-    #                     f.write("- inbound:")
-    #                     for in_addr in flow_item.inbounds:
-    #                         f.write(" [0x%08x](#flow-0x%08x)" % (in_addr, in_addr))
-    #                     f.write("\n")
-    #                     f.write('```\n')
-    #                     for inst in flow_item.inst_list:
-    #                         f.write("%s" % inst.asm)
-    #                         if inst.call:
-    #                             call_addr = inst.call[0]
-    #                             if type(call_addr) is int:
-    #                                 f.write('\n```\n')
-    #                                 f.write("[func_0x%08x](./func_0x%08x.md)\n" % (call_addr, call_addr))
-    #                                 f.write('```\n')
-    #                                 func_stack.append(call_addr)
-    #                             else:
-    #                                 import_addr = inst.hint
-    #                                 if import_addr in import_table:
-    #                                     f.write(" (%s)\n" % import_table[import_addr].split("@")[0])
-    #                                 else:
-    #                                     f.write(" (??)\n")
-    #                         else:
-    #                             f.write("\n")
-    #                     f.write('```\n')
-    #                     f.write("- outbound:")
-    #                     for out_addr in flow_item.outbounds:
-    #                         f.write(" [0x%08x](#flow-0x%08x)" % (out_addr, out_addr))
-    #                     f.write("\n")
-    #         except Exception as e:
-    #             print(repr(e))
+    return PE64(
+        export_pe_name,
+        b_imag,
+        entry_addr,
+        export_dict,
+        import_dict,
+        section_dict,
+    )
