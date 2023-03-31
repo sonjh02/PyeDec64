@@ -113,7 +113,9 @@ def parse_func(image: bytes, func_addr: int = 0):
         if addr in dfs_visit:
             continue
         dfs_visit.add(addr)
-        flow = Flow([], [], [])
+        flow_dict[addr] = flow = Flow([], [], [])
+
+
 
 
     return inst_dict
