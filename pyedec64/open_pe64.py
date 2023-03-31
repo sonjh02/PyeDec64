@@ -1,8 +1,67 @@
-from .image_stream import ImageStream
-from .parse_func import parse_func
+import numpy as np
+from struct import unpack
 
 
-def parse_pe64(file, dir_path):
+def read2(b, p = 0):
+    return unpack("H", b[p : p + 2])[0]
+
+
+def read4(b, p = 0):
+    return unpack("L", b[p : p + 4])[0]
+
+
+def open_pe64(file: str):
+    with open(file, 'rb') as f:
+        b_file = f.read()
+
+    _pe_header_ptr = read4(b_file, 0x3c)
+
+    _pe_header_sig = read4(b_file, _pe_header_ptr)
+    assert _pe_header_sig == read4(b'PE\x00\x00'), "Invalid PE Header"
+
+    section_cnt = read2(b_file, _pe_header_ptr + 6)
+
+    _opt_header_sig = read2(b_file, _pe_header_ptr + 24)
+    assert _opt_header_sig == 0x020b, "Invalid Optional Header (PE32+ Only)"
+
+    entry_addr = read4(b_file, _pe_header_ptr + 40)
+    _data_dir_cnt = read4(b_file, _pe_header_ptr + 132)
+    assert _data_dir_cnt == 16, "Invalid Data Directory Entry Count"
+
+    _export_table_addr = read4(b_file, _pe_header_ptr + 136)
+    _import_table_addr = read4(b_file, _pe_header_ptr + 144)
+
+    max_addr = 0
+    section_dict = dict()
+    for section_idx in range(section_cnt):
+        section_base = _pe_header_ptr + 264 + section_idx * 40
+        section_name = b_file[section_base : section_base + 8]
+        section_info = tuple(
+            read4(b_file, section_base + 8 + 4 * i)
+            for i in range(4)
+        )
+        section_dict[section_name] = section_info
+        max_addr = max(max_addr, section_info[0] + section_info[1])
+
+    v_imag = np.zeros(max_addr, "B")
+    for vsize, vaddr, bsize, baddr in section_dict.values():
+        sz = min(vsize, bsize)
+        v_imag[vaddr : vaddr + sz] = np.frombuffer(b_file, "B", offset = baddr)[:sz]
+
+    b_imag = memoryview(v_imag).tobytes()
+
+
+
+
+
+    raise NotImplementedError()
+
+
+
+
+
+
+
     rs = ImageStream()
     with open(file, 'rb') as f:
         rs.add(0, f.read())
