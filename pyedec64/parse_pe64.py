@@ -98,7 +98,8 @@ def parse_pe64(file, dir_path):
 
     image = vs
 
-    # image.goto(0x5deb58)
+    image.goto(0x4f220)
+    print(image.read(64))
     # bytes: bytearray = image.read(64)
     # print(bytes)
     # print(bytes.decode('utf-8'))
