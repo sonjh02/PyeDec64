@@ -1,5 +1,3 @@
-from typing import Any
-
 import numpy as np
 from struct import unpack
 from dataclasses import dataclass
@@ -9,10 +7,10 @@ from dataclasses import dataclass
 class PE64:
     name: str
     image: bytes
-    entry_addr: int
-    export_dict: dict[int, str]
-    import_dict: dict[int, str]
-    section_dict: dict[bytes, tuple[int, int, int, int]]
+    entry: int
+    exports: dict[int, str]
+    imports: dict[int, str]
+    sections: dict[bytes, tuple[int, int, int, int]]
 
 
 def read2(b, p = 0):
@@ -120,10 +118,10 @@ def open_pe64(file: str):
     #     print("[0x%08x] %s" % i)
 
     return PE64(
-        export_pe_name,
-        b_imag,
-        entry_addr,
-        export_dict,
-        import_dict,
-        section_dict,
+        name = export_pe_name,
+        image = b_imag,
+        entry = entry_addr,
+        exports = export_dict,
+        imports = import_dict,
+        sections = section_dict,
     )
