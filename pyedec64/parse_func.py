@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from iced_x86 import (
     Decoder,
@@ -12,6 +13,7 @@ from iced_x86 import (
 
 @dataclass
 class Inst:
+    addr: int
     asm: str
     raw: bytes
     far: int | str
@@ -21,7 +23,7 @@ class Inst:
 
 @dataclass
 class Flow:
-    code: list[Inst]
+    codes: list[Inst]
     inbounds: list[int]
     outbounds: list[int]
 
@@ -59,33 +61,33 @@ def _parse_inst(image: bytes, addr: int) -> Inst:
     ), "Invalid Code: %s = %s" % (repr(inst), raw.hex().upper())
 
     if inst.flow_control == FlowControl.NEXT:
-        return Inst(asm, raw, 0, 0, [next_addr])
+        return Inst(addr, asm, raw, 0, 0, [next_addr])
 
     if inst.flow_control == FlowControl.UNCONDITIONAL_BRANCH:
         branch = _parse_near_branch(inst)
-        return Inst(asm, raw, 0, 0, [branch])
+        return Inst(addr, asm, raw, 0, 0, [branch])
 
     if inst.flow_control == FlowControl.INDIRECT_BRANCH:
         branch = _parse_indirect_branch(inst, asm)
-        return Inst(asm, raw, branch, 0, [])
+        return Inst(addr, asm, raw, branch, 0, [])
 
     if inst.flow_control == FlowControl.CONDITIONAL_BRANCH:
         branch = _parse_near_branch(inst)
-        return Inst(asm, raw, 0, 0, [next_addr, branch])
+        return Inst(addr, asm, raw, 0, 0, [next_addr, branch])
 
     if inst.flow_control == FlowControl.RETURN:
-        return Inst(asm, raw, 0, 0, [])
+        return Inst(addr, asm, raw, 0, 0, [])
 
     if inst.flow_control == FlowControl.CALL:
         branch = _parse_near_branch(inst)
-        return Inst(asm, raw, 0, branch, [next_addr])
+        return Inst(addr, asm, raw, 0, branch, [next_addr])
 
     if inst.flow_control == FlowControl.INDIRECT_CALL:
         branch = _parse_indirect_branch(inst, asm)
-        return Inst(asm, raw, branch, 0, [next_addr])
+        return Inst(addr, asm, raw, branch, 0, [next_addr])
 
     if inst.flow_control == FlowControl.INTERRUPT:
-        return Inst(asm, raw, 0, 0, [])
+        return Inst(addr, asm, raw, 0, 0, [])
 
     raise NotImplementedError("FlowControl %d" % inst.flow_control)
 
@@ -94,7 +96,7 @@ def parse_func(image: bytes, func_addr: int = 0):
     inst_dict: dict[int, Inst] = dict()
     dfs_stack: list[int] = [func_addr]
     dfs_visit: set[int] = set()
-    inbound_cnt: dict[int, int] = dict()
+    inbound_cnt: dict[int, int] = defaultdict(int)
     while dfs_stack:
         addr = dfs_stack.pop()
         if addr in dfs_visit:
@@ -109,13 +111,29 @@ def parse_func(image: bytes, func_addr: int = 0):
     dfs_stack: list[int] = [func_addr]
     dfs_visit: set[int] = set()
     while dfs_stack:
-        addr = dfs_stack.pop()
-        if addr in dfs_visit:
+        flow_addr = dfs_stack.pop()
+        if flow_addr in dfs_visit:
             continue
-        dfs_visit.add(addr)
-        flow_dict[addr] = flow = Flow([], [], [])
+        dfs_visit.add(flow_addr)
+        flow_dict[flow_addr] = flow = Flow([], [], [])
+        addr = flow_addr
+        while True:
+            inst = inst_dict[addr]
+            flow.codes.append(inst)
+            if len(inst.link) == 1:
+                addr = inst.link[0]
+                if inbound_cnt[addr] > 1:
+                    flow.outbounds.append(addr)
+                    dfs_stack.append(addr)
+                    break
+            else:
+                if inst.link:
+                    flow.outbounds.extend(inst.link)
+                    dfs_stack.extend(inst.link)
+                break
 
+    for flow_addr, flow in flow_dict.items():
+        for outbound in flow.outbounds:
+            flow_dict[outbound].inbounds.append(flow_addr)
 
-
-
-    return inst_dict
+    return flow_dict

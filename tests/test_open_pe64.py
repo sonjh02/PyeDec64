@@ -7,14 +7,14 @@ def test_open_pe64():
     for key, val in pe.exports.items():
         if val[9:].startswith("?") and not val[9:].startswith("??"):
             try:
-                print(val)
-                inst_dict = parse_func(pe.image, key)
-                flag = False
-                for key, val in inst_dict.items():
-                    if type(val.far) is str and not val.link:
-                        flag = True
-                        break
-                if flag:
-                    break
+                print("Function 0x%08x = %s" % (key, val))
+                flow_dict = parse_func(pe.image, key)
+                for flow_addr, flow in flow_dict.items():
+                    print("Flow 0x%08x" % flow_addr)
+                    print("> inbounds:", repr(["0x%08x" % v for v in flow.inbounds]))
+                    for inst in flow.codes:
+                        print("> [0x%08x] %s" % (inst.addr, inst.asm))
+                    print("> outbounds:", repr(["0x%08x" % v for v in flow.outbounds]))
+                break
             except AssertionError as e:
                 print(repr(e))
