@@ -2,16 +2,28 @@ from pyedec64 import open_pe64, parse_func, parse_pe64
 
 
 def test_run():
-    pe = open_pe64('./.dumps/test.exe')
+    pe = open_pe64('./.dumps/test.dll')
     print("Start")
-    save_dir = './.dumps/test_exe'
+    save_dir = './.dumps/test_dll'
     with open(save_dir + '/imports.txt', 'w') as f:
         for addr, name in pe.imports.items():
             f.write("[0x%08x] %s\n" % (addr, name))
     with open(save_dir + '/exports.txt', 'w') as f:
         for addr, name in pe.exports.items():
             f.write("[0x%08x] %s\n" % (addr, name))
-
+    with open(save_dir + '/imagehex.txt', 'w') as f:
+        for o in range(0, len(pe.image), 16):
+            f.write("[0x%08x]" % o)
+            for i in range(16):
+                f.write(" %02X" % pe.image[o + i])
+            f.write(" | ")
+            for i in range(16):
+                v = pe.image[o + i]
+                if 32 <= v < 127:
+                    f.write("%s" % chr(v))
+                else:
+                    f.write(".")
+            f.write("\n")
     dfs_stack: list[int] = list()
     dfs_visit: set[int] = set()
     for func_addr, func_name in pe.exports.items():
