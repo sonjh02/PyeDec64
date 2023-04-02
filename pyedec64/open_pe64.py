@@ -60,7 +60,7 @@ def open_pe64(file: str):
         section_dict[name] = info
         max_addr = max(max_addr, info[0] + info[1])
 
-    v_imag = np.zeros(max_addr, "B")
+    v_imag = np.zeros((max_addr + 15) // 16 * 16, "B")
     for vs, va, bs, ba in section_dict.values():
         sz = min(vs, bs)
         v_imag[va : va + sz] = np.frombuffer(b_file, "B", offset = ba)[:sz]

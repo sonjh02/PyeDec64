@@ -1,10 +1,10 @@
-from pyedec64 import open_pe64, parse_func, parse_pe64
+from pyedec64 import open_pe64, parse_func, reflow
 
 
 def test_run():
 
-    pe_file = './.dumps/test.dll'
-    save_dir = './.dumps/test_dll'
+    pe_file = './.dumps/test.exe'
+    save_dir = './.dumps/test_exe'
 
     pe = open_pe64(pe_file)
     print("Start")
@@ -39,6 +39,8 @@ def test_run():
                 print("Function 0x%08x = %s" % (func_addr, func_name))
 
             flow_dict = parse_func(pe.image, func_addr)
+            reflow(flow_dict)
+
 
             with open(save_dir + '/func_0x%08x.txt' % func_addr, 'w') as f:
                 if func_name is None:
@@ -47,20 +49,35 @@ def test_run():
                     f.write("Function 0x%08x = %s\n" % (func_addr, func_name))
 
                 for flow_addr, flow in sorted(flow_dict.items()):
-                    f.write("Flow 0x%08x\n" % flow_addr)
+                    f.write("\nFlow 0x%08x\n" % flow_addr)
                     f.write("> from:")
                     for v in flow.inbounds:
                         f.write(" 0x%08x" % v)
                     f.write("\n")
+                    indent = 0
                     for inst in flow.codes:
-                        f.write("> [0x%08x] %s\n" % (inst.addr, inst.asm))
-                        if inst.near:
-                            dfs_stack.append(inst.near)
-                        if inst.far and type(inst.far) is int:
-                            if inst.far in pe.imports:
-                                f.write("Calling %s\n" % pe.imports[inst.far])
+                        if type(inst) == str:
+                            f.write("> ")
+                            if inst.startswith("BEGIN"):
+                                f.write("  " * indent)
+                                indent += 1
                             else:
-                                f.write("Calling ??\n")
+                                indent -= 1
+                                f.write("  " * indent)
+                            f.write(inst + "\n")
+                        else:
+                            f.write("> ")
+                            f.write("  " * indent)
+                            f.write("[0x%08x] %s" % (inst.addr, inst.asm))
+                            if inst.near:
+                                dfs_stack.append(inst.near)
+                                f.write(" // Calling -")
+                            if inst.far and type(inst.far) is int:
+                                if inst.far in pe.imports:
+                                    f.write(" // Calling %s" % pe.imports[inst.far])
+                                else:
+                                    f.write(" // Calling ??")
+                            f.write("\n")
                     f.write("> to:")
                     for v in flow.outbounds:
                         f.write(" 0x%08x" % v)
