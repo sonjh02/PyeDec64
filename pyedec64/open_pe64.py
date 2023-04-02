@@ -84,8 +84,6 @@ def open_pe64(file: str):
         _name_addr = read4(b_imag, _export_name_ptr_addr + export_idx * 4)
         name = reads(b_imag, _name_addr)
         export_dict[addr] = "%s.%s" % (export_pe_name, name)
-    # for key, val in export_dict.items():
-    #     print("[0x%08x] %s" % (key, val))
 
     import_dict = dict()
     _import_dll_idx = 0
@@ -114,8 +112,6 @@ def open_pe64(file: str):
                 break
             _import_sym_idx += 1
         _import_dll_idx += 1
-    # for i in import_dict.items():
-    #     print("[0x%08x] %s" % i)
 
     return PE64(
         name = export_pe_name,
