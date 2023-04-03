@@ -126,6 +126,20 @@ def try_normal_branch(flow_dict: dict[int, Flow]) -> bool:
 def try_simple_loop(flow_dict: dict[int, Flow]) -> bool:
     flag = False
 
+    for flow_addr, flow in flow_dict.items():
+        if flow_addr not in flow.inbounds:
+            continue
+        if flow_addr not in flow.outbounds:
+            continue
+        flag = True
+        break
+
+    if flag:
+        flow.inbounds.pop(flow.inbounds.index(flow_addr))
+        flow.outbounds.pop(flow.outbounds.index(flow_addr))
+        flow.codes.insert(0, "BEGIN LOOP")
+        flow.codes.append("END LOOP")
+
     return flag
 
 
