@@ -1,3 +1,5 @@
+import graphviz
+
 from pyedec64 import open_pe64, parse_func, reflow
 
 
@@ -41,6 +43,13 @@ def test_run():
             flow_dict = parse_func(pe.image, func_addr)
             reflow(flow_dict)
 
+            dot = graphviz.Digraph(name='func_0x%08x' % func_addr, comment=func_name)
+            for flow_addr, flow in flow_dict.items():
+                dot.node("0x%08x" % flow_addr)
+            for flow_addr, flow in flow_dict.items():
+                for outbound in flow.outbounds:
+                    dot.edge("0x%08x" % flow_addr, "0x%08x" % outbound)
+            dot.render(save_dir + '/func_0x%08x.gv' % func_addr)
 
             with open(save_dir + '/func_0x%08x.txt' % func_addr, 'w') as f:
                 if func_name is None:
