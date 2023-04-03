@@ -5,11 +5,14 @@ from pyedec64 import open_pe64, parse_func, reflow
 
 def test_run():
 
-    pe_file = './.dumps/test.exe'
-    save_dir = './.dumps/test_exe'
+    pe_file = './.dumps/test.dll'
+    save_dir = './.dumps/test_dll'
 
-    pe = open_pe64(pe_file)
+    # pe_file = './.dumps/test.exe'
+    # save_dir = './.dumps/test_exe'
+
     print("Start")
+    pe = open_pe64(pe_file)
 
     with open(save_dir + '/imports.txt', 'w') as f:
         for addr, name in pe.imports.items():

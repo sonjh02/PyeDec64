@@ -80,7 +80,7 @@ def open_pe64(file: str):
     export_pe_name = reads(b_imag, _export_pe_name_addr)
     export_dict = {entry_addr: "%s.!entry" % export_pe_name}
     for export_idx in range(export_cnt):
-        addr = read4(b_imag, _export_addr_table_addr + export_idx * 8)
+        addr = read4(b_imag, _export_addr_table_addr + export_idx * 4)
         _name_addr = read4(b_imag, _export_name_ptr_addr + export_idx * 4)
         name = reads(b_imag, _name_addr)
         export_dict[addr] = "%s.%s" % (export_pe_name, name)
