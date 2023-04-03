@@ -72,11 +72,75 @@ def try_simple_branch(flow_dict: dict[int, Flow]) -> bool:
 
     return flag
 
+
+def try_normal_branch(flow_dict: dict[int, Flow]) -> bool:
+    flag = False
+
+    for flow_addr, flow in flow_dict.items():
+        if len(flow.outbounds) != 2:
+            continue
+        if flow_addr in flow.outbounds:
+            continue
+        flow_a_addr, flow_b_addr = flow.outbounds
+        flow_a = flow_dict[flow_a_addr]
+        flow_b = flow_dict[flow_b_addr]
+        if len(flow_a.inbounds) != 1:
+            continue
+        if len(flow_a.outbounds) != 1:
+            continue
+        if len(flow_b.inbounds) != 1:
+            continue
+        if len(flow_b.outbounds) != 1:
+            continue
+        flow_c_addr = flow_a.outbounds[0]
+        if flow_c_addr != flow_b.outbounds[0]:
+            continue
+        if flow_c_addr in [flow_addr, flow_a_addr, flow_b_addr]:
+            continue
+        flow_c = flow_dict[flow_c_addr]
+        if len(flow_c.inbounds) != 2:
+            continue
+        flag = True
+        break
+
+    if flag:
+        flow_a = flow_dict.pop(flow_a_addr)
+        flow_b = flow_dict.pop(flow_b_addr)
+        flow_c = flow_dict.pop(flow_c_addr)
+        flow.outbounds.clear()
+        flow.outbounds.extend(flow_c.outbounds)
+        for outbound in flow_c.outbounds:
+            target = flow_dict[outbound].inbounds
+            target.pop(target.index(flow_c_addr))
+            target.append(flow_addr)
+        flow.codes.append("BEGIN IF")
+        flow.codes.extend(flow_a.codes)
+        flow.codes.append("ELSE")
+        flow.codes.extend(flow_b.codes)
+        flow.codes.append("END IF")
+        flow.codes.extend(flow_c.codes)
+
+    return flag
+
+
+def try_simple_loop(flow_dict: dict[int, Flow]) -> bool:
+    flag = False
+
+    return flag
+
+
+_try_list = [
+    try_simple_block,
+    try_simple_branch,
+    try_normal_branch,
+    try_simple_loop,
+]
+
+
 def reflow(flow_dict: dict[int, Flow]):
     flag = True
     while flag:
         flag = False
-        while try_simple_branch(flow_dict):
-            flag = True
-        while try_simple_block(flow_dict):
-            flag = True
+        for try_something in _try_list:
+            while try_something(flow_dict):
+                flag = True

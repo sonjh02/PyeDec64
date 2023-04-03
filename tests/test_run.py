@@ -61,9 +61,13 @@ def test_run():
                             if inst.startswith("BEGIN"):
                                 f.write("  " * indent)
                                 indent += 1
+                            elif inst.startswith("END"):
+                                indent -= 1
+                                f.write("  " * indent)
                             else:
                                 indent -= 1
                                 f.write("  " * indent)
+                                indent += 1
                             f.write(inst + "\n")
                         else:
                             f.write("> ")
