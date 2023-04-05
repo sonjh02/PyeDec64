@@ -1,28 +1,36 @@
+import os
+import pytest
 import graphviz
-
+from collections import defaultdict
 from pyedec64 import open_pe64, parse_func, reflow
 
 
-def test_run():
+@pytest.fixture(
+    params=[
+        ('./.dumps/test.dll', './.dumps/test_dll'),
+        ('./.dumps/test.exe', './.dumps/test_exe'),
+    ],
+)
+def target(request):
+    return request.param
 
-    pe_file = './.dumps/test.dll'
-    save_dir = './.dumps/test_dll'
 
-    # pe_file = './.dumps/test.exe'
-    # save_dir = './.dumps/test_exe'
+def test_run(target):
+    pe_file, save_dir = target
+    os.makedirs(save_dir, exist_ok=True)
 
-    print("Start")
+    print("Start %s" % pe_file)
     pe = open_pe64(pe_file)
 
-    with open(save_dir + '/imports.txt', 'w') as f:
+    with open(save_dir + '/_imports.txt', 'w') as f:
         for addr, name in pe.imports.items():
             f.write("[0x%08x] %s\n" % (addr, name))
 
-    with open(save_dir + '/exports.txt', 'w') as f:
+    with open(save_dir + '/_exports.txt', 'w') as f:
         for addr, name in pe.exports.items():
             f.write("[0x%08x] %s\n" % (addr, name))
 
-    with open(save_dir + '/imagehex.txt', 'w') as f:
+    with open(save_dir + '/_hexdata.txt', 'w') as f:
         for o in range(0, len(pe.image), 16):
             f.write("[0x%08x]" % o)
             for i in range(16):
@@ -35,6 +43,9 @@ def test_run():
                 else:
                     f.write(".")
             f.write("\n")
+
+    dfs_stack: list[int] = list()
+    dfs_visit: dict[int, tuple[dict[str, int], set[int]]] = dict()
 
     def write_func(func_addr: int, func_name: str | None = None):
         try:
@@ -94,6 +105,20 @@ def test_run():
                                 else:
                                     f.write(" // Calling ??")
                             f.write("\n")
+
+                            if inst.near:
+                                dfs_visit[func_addr][1].add(inst.near)
+
+                            if inst.far:
+                                if type(inst.far) is int:
+                                    if inst.far in pe.imports:
+                                        dfs_visit[func_addr][0][pe.imports[inst.far].split(".")[0]] += 1
+                                    else:
+                                        dfs_visit[func_addr][0]["unknown"] += 1
+                                else:
+                                    dfs_visit[func_addr][0]["indirect"] += 1
+
+
                     f.write("> to:")
                     for v in flow.outbounds:
                         f.write(" 0x%08x" % v)
@@ -101,15 +126,26 @@ def test_run():
         except AssertionError as e:
             print(repr(e))
 
-    dfs_stack: list[int] = list()
-    dfs_visit: set[int] = set()
     for func_addr, func_name in pe.exports.items():
-        dfs_visit.add(func_addr)
+        if func_addr in dfs_visit:
+            continue
+        dfs_visit[func_addr] = (defaultdict(int), set())
         write_func(func_addr, func_name)
 
     while dfs_stack:
         func_addr = dfs_stack.pop()
         if func_addr in dfs_visit:
             continue
-        dfs_visit.add(func_addr)
+        dfs_visit[func_addr] = (defaultdict(int), set())
         write_func(func_addr)
+
+    dot = graphviz.Digraph(name=pe.name)
+    for func_addr, (calls, _) in dfs_visit.items():
+        label = "func 0x%08x" % func_addr
+        for call in calls.items():
+            label += ", %s=%d" % call
+        dot.node("func_0x%08x" % func_addr, label)
+    for func_addr, (_, calls) in dfs_visit.items():
+        for call_addr in calls:
+            dot.edge("func_0x%08x" % func_addr, "func_0x%08x" % call_addr)
+    dot.render(save_dir + '/%s.gv' % pe.name)
